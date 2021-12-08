@@ -186,7 +186,7 @@ class NN():
         self.val_losses = []
         self.val_accuracy = []
 
-    def train(self, x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda=0):
+    def train(self, x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda=0, dropout_keep_prob = 1):
         train_samples = x_train.shape[1]  # number of training samples
 
         # iterations over entire dataset
@@ -201,6 +201,9 @@ class NN():
 
                 z1 = np.matmul(self.w1, x) + self.b1
                 h = self.activation(z1)  # sigmoid / relu
+                #dropout - scaled down so there is no need to change test code
+                dropout_mask_1 = (np.random.rand(*h.shape) < dropout_keep_prob) / dropout_keep_prob 
+                h *= dropout_mask_1
                 z2 = np.matmul(self.w2, h) + self.b2
                 y_pred = np.exp(z2) / (np.sum(np.exp(z2), axis=0))
                 loss += cross_entropy_loss(y_pred, y) + l2_reg(self.w1, l2_lambda) + l2_reg(self.w2, l2_lambda)
@@ -215,6 +218,8 @@ class NN():
                     dLdz1 = dLdh * relu_derivative(z1)
                 else:
                     dLdz1 = dLdh * sigmoid(z1) * (1 - sigmoid(z1))
+                # if dopout applied in forward prop - bakprop shuld mask and scale too
+                dLdh *= dropout_mask_1
                 dLdw1 = (1. / train_samples) * np.matmul(dLdz1, x.T)
                 dLdb1 = (1. / train_samples) * np.sum(dLdz1, axis=1, keepdims=True)
 
@@ -256,7 +261,7 @@ class NN():
         np.savetxt(file_name, test_predictions, fmt='%i')  # d = 500, Bsize = 1024, LR=1, epoch=50 acc = 0.83
         return
 
-def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epochs, l2_lambda, NN_width):
+def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epochs, l2_lambda, NN_width, dropout_keep_prob = 1):
     train_samples = x_train.shape[1]  # number of training samples
     input_dim = x_train.shape[0]  # dimension 784
 
@@ -277,10 +282,16 @@ def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epoch
             idx_end = min(idx_start + batch_size, train_samples)
             x = x_train[:, idx_start:idx_end]  # take all data in the current batch
             y = y_train[:, idx_start:idx_end]  # .reshape(-1, 1)  # take relevant labels
-
+            
+            # 1st layer
             z1 = np.matmul(w1, x) + b1
             # h = sigmoid(z1)
             h = relu(z1)  # sigmoid / relu
+            #dropout - scaled down so there is no need to change test code
+            dropout_mask_1 = (np.random.rand(*h.shape) < dropout_keep_prob) / dropout_keep_prob 
+            h *= dropout_mask_1
+
+            # 2nd layer
             z2 = np.matmul(w2, h) + b2
             y_pred = np.exp(z2) / np.sum(np.exp(z2), axis=0)
             regularization_term = l2_lambda * (np.sum(np.power(w1, 2)) + np.sum(np.power(w2, 2)))
@@ -294,7 +305,9 @@ def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epoch
             dLdb2 = (1. / train_samples) * np.sum(dLdz2, axis=1, keepdims=True)
             dLdw2 = (1. / train_samples) * np.matmul(dLdz2, h.T)
 
-            dLdh = np.matmul(w2.T, dLdz2)
+            dLdh = np.matmul(w2.T, dLdz2) 
+            # if dopout applied in forward prop - bakprop shuld mask and scale too
+            dLdh *= dropout_mask_1
             # dLdz1 = dLdh * sigmoid(z1) * (1 - sigmoid(z1))
             dLdz1 = dLdh * relu_derivative(z1)
             dLdw1 = (1. / train_samples) * np.matmul(dLdz1, x.T)
@@ -433,10 +446,12 @@ batch_size = 1024  # batch size
 lr = 1
 l2_lambda = 0.00001
 NN_width = 500  # NN layer size
+dropout_keep_prob=0.5
 
 
 
 nn = NN(NN_width, act_type='relu')
-train_loss_list, train_accuracy, val_loss_list, val_accuracy = nn.train(x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda)
-show_learning_curve(train_loss_list, val_loss_list, train_accuracy, val_accuracy, nn.epoch, batch_size, lr, l2_lambda, NN_width=NN_width)
+train_loss_list, train_accuracy, val_loss_list, val_accuracy = nn.train(x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda, dropout_keep_prob=dropout_keep_prob )
+show_learning_curve(train_loss_list, val_loss_list, train_accuracy, val_accuracy, nn.epoch, batch_size, lr, l2_lambda, NN_width=NN_width, dropout_keep_prob=dropout_keep_prob)
+plt.show()
 nn.save_test_predictions()
