@@ -88,8 +88,16 @@ def test(x, w, l2_lambda, y_true=None):
         accuracy = np.mean(np.equal(np.argmax(y_true, axis=0), predictions))
         return accuracy, test_loss
 
+def l1_reg(w, l1_lambda):
+    reg_term = l1_lambda * np.sum(np.abs(w))
+    return reg_term
 
-def logistic_regression(x_train, y_train, x_val, y_val, x_test, batch_size, lr, epochs, l2_lambda):
+def dL1_dw(w, l1_lambda):
+    reg_derivative = np.ones_like(w) * l1_lambda
+    print(np.argwhere(w<0))
+    reg_derivative[np.argwhere(w < 0)] = - l1_lambda
+
+def logistic_regression(x_train, y_train, x_val, y_val, x_test, batch_size, lr, epochs, l2_lambda, l1_lambda=0.0):
     # add a feature for the bias
 
     x_train_full = np.vstack([x_train, np.ones([1, x_train.shape[1]])])
@@ -118,6 +126,11 @@ def logistic_regression(x_train, y_train, x_val, y_val, x_test, batch_size, lr, 
 
             # calculate loss
 
+            batch_loss = cross_entropy_loss(softmax_z, y_batch) + l2_reg(w,l2_lambda) + l1_reg(w,l1_lambda)
+            loss += batch_loss
+            # compute gradient of the loss w.r.t w
+
+            delta_w = dL_dw(softmax_z, y_batch, x_batch) + 2 * l2_lambda * w + dL1_dw(w, l1_lambda)
             batch_loss = cross_entropy_loss(softmax_z, y_batch) + l2_reg(w,l2_lambda)
             loss += batch_loss
             # compute gradient of the loss w.r.t w
@@ -283,7 +296,7 @@ def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epoch
             x = x_train[:, idx_start:idx_end]  # take all data in the current batch
             y = y_train[:, idx_start:idx_end]  # .reshape(-1, 1)  # take relevant labels
             
-            # 1st layer
+            # Hidden layer
             z1 = np.matmul(w1, x) + b1
             # h = sigmoid(z1)
             h = relu(z1)  # sigmoid / relu
@@ -291,7 +304,7 @@ def neural_net(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epoch
             dropout_mask_1 = (np.random.rand(*h.shape) < dropout_keep_prob) / dropout_keep_prob 
             h *= dropout_mask_1
 
-            # 2nd layer
+            # Output  layer
             z2 = np.matmul(w2, h) + b2
             y_pred = np.exp(z2) / np.sum(np.exp(z2), axis=0)
             regularization_term = l2_lambda * (np.sum(np.power(w1, 2)) + np.sum(np.power(w2, 2)))
@@ -428,10 +441,11 @@ batch_size = 1024
 lr = 1
 lr = 0.1
 l2_lambda = 0
+l1_lambda=0.01
 NN_width = 500
 
 train_loss_list, train_accuracy, val_loss_list, val_accuracy =\
-    logistic_regression(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epochs, l2_lambda)
+    logistic_regression(x_train, y_train, x_val, y_val, x_test, batch_size, lr, num_epochs, l2_lambda, l1_lambda)
 
 show_learning_curve(train_loss_list, val_loss_list, train_accuracy, val_accuracy, num_epochs, batch_size, lr, l2_lambda)
 
@@ -451,7 +465,7 @@ dropout_keep_prob=0.5
 
 
 nn = NN(NN_width, act_type='relu')
-train_loss_list, train_accuracy, val_loss_list, val_accuracy = nn.train(x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda, dropout_keep_prob=dropout_keep_prob )
+train_loss_list, train_accuracy, val_loss_list, val_accuracy = nn.train(x_train, y_train, x_val, y_val, batch_size, lr, num_epochs, l2_lambda, dropout_kmeep_prob=dropout_keep_prob )
 show_learning_curve(train_loss_list, val_loss_list, train_accuracy, val_accuracy, nn.epoch, batch_size, lr, l2_lambda, NN_width=NN_width, dropout_keep_prob=dropout_keep_prob)
 plt.show()
 nn.save_test_predictions()
