@@ -136,8 +136,10 @@ def train(net, trainloader, valloader, num_epochs=50, validation_ratio=0.2, augm
 		correct_train = 0
 		total_train = 0
 		net.num_epochs += 1
+		counter = 0
 		for i, data in enumerate(trainloader, 0):
 			# get the inputs; data is a list of [inputs, labels]
+			counter += 1
 			inputs, labels = data
 			inputs = inputs.to(device)
 			labels = labels.to(device)
@@ -168,7 +170,7 @@ def train(net, trainloader, valloader, num_epochs=50, validation_ratio=0.2, augm
 			# 		(epoch + 1, i + 1, running_loss / 2000))
 			# 	running_loss = 0.0
 
-		epoch_loss = running_loss/net.num_epochs
+		epoch_loss = running_loss/float(counter)
 		train_acc = 100*correct_train/total_train
 		net.train_loss_list.append(epoch_loss)
 		net.train_accuracy.append(train_acc)
