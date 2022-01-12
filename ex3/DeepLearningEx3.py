@@ -65,7 +65,7 @@ targets = trainset.labels
 targets_idx = np.arange(len(targets))
 train_idx, valid_idx = train_test_split(targets_idx, test_size=0.2, random_state=seed,shuffle=True, stratify=targets)
 train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
-val_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
+val_sampler = torch.utils.data.SubsetRandomSampler(valid_idx)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=8,num_workers=4, sampler=train_sampler)
 valloader = torch.utils.data.DataLoader(valset, batch_size=16,num_workers=4, sampler=val_sampler)
 testset = torchvision.datasets.STL10(root='./ex3/data', split='test',download=True, transform=test_transform)
