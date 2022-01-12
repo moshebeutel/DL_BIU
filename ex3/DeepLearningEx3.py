@@ -8,9 +8,10 @@ import torchvision.transforms as transforms
 import torch.optim as optim
 from torchsummary import summary
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 
 print('debugger checkpoint')
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
 ###
 cuda = True
@@ -53,20 +54,22 @@ train_transform=transforms.Compose([
                     # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                 ])
 
-trainset = torchvision.datasets.STL10(root='./ex3/data', split='train', download=True, transform=train_transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=8,
-                                          shuffle=True, num_workers=4)
-
-
 test_transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.CenterCrop(cropped_size),
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                ])
-testset = torchvision.datasets.STL10(root='./ex3/data', split='test',
-                                       download=True, transform=test_transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=16,
-                                         shuffle=False, num_workers=1)
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),  ])
+
+trainset = torchvision.datasets.STL10(root='./ex3/data', split='train', download=True, transform=train_transform)
+valset = torchvision.datasets.STL10(root='./ex3/data', split='train', download=True, transform=test_transform)
+targets = trainset.labels
+targets_idx = np.arange(len(targets))
+train_idx, valid_idx = train_test_split(targets_idx, test_size=0.2, random_state=seed,shuffle=True, stratify=targets)
+train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
+val_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=8,num_workers=4, sampler=train_sampler)
+valloader = torch.utils.data.DataLoader(valset, batch_size=16,num_workers=4, sampler=val_sampler)
+testset = torchvision.datasets.STL10(root='./ex3/data', split='test',download=True, transform=test_transform)
+testloader = torch.utils.data.DataLoader(testset, batch_size=16,shuffle=False, num_workers=1)
 
 ###
 
@@ -101,9 +104,9 @@ while not all(v >= 4 for v in counters_dict.values()):
 
 # show images
 
-for l,imgs in imgs_dict.items():
-    print(l)
-    imshow(torchvision.utils.make_grid(imgs, nrow=4))
+# for l,imgs in imgs_dict.items():
+#     print(l)
+#     imshow(torchvision.utils.make_grid(imgs, nrow=4))
 
 ###
 
@@ -114,22 +117,19 @@ fliper = transforms.RandomHorizontalFlip(p=0.5)
 fliper_for_visualization = transforms.RandomHorizontalFlip(p=1)
 images,_ = dataiter.next()
 img = images[0]
-plt.figure()
-imshow(img)
+# plt.figure()
+# imshow(img)
 img_aug = rotater(img)
 img_aug = fliper_for_visualization(img_aug)
-plt.figure()
-imshow(img_aug)
+# plt.figure()
+# imshow(img_aug)
 
 ###
-def train(net, trainloader, num_epochs=50, validation_ratio=0.2, augment=False):
+def train(net, trainloader, valloader, num_epochs=50, validation_ratio=0.2, augment=False):
 	criterion = nn.CrossEntropyLoss()
 	# optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 	optimizer = optim.Adam(net.parameters(), lr=0.0001)
 	epoch_pbar = tqdm(range(num_epochs))
-	assert 0.05 < validation_ratio < 0.4
-	save_for_val_every = int(1/validation_ratio)
-	val_inputs, val_labels = [], []
 
 	for epoch in epoch_pbar:  # loop over the dataset multiple times
 		running_loss = 0.0
@@ -141,59 +141,43 @@ def train(net, trainloader, num_epochs=50, validation_ratio=0.2, augment=False):
 			inputs, labels = data
 			inputs = inputs.to(device)
 			labels = labels.to(device)
-
-			if i % save_for_val_every == save_for_val_every - 1:  # not working when quotient is non integer? consider 0.15
-				# save for validation
-				val_inputs.append(inputs)
-				val_labels.append(labels)
-			else:
 				#train:
 
-				total_train += labels.size(0)
+			total_train += labels.size(0)
 
-				if augment: # augmentation
-					inputs = rotater(inputs)
-					inputs = fliper(inputs)
+			if augment: # augmentation
+				inputs = rotater(inputs)
+				inputs = fliper(inputs)
 
-				# zero the parameter gradients
-				optimizer.zero_grad()
+			# zero the parameter gradients
+			optimizer.zero_grad()
 
-				# forward + backward + optimize
-				outputs = net(inputs)
-				loss = criterion(outputs, labels)
-				loss.backward()
-				optimizer.step()
+			# forward + backward + optimize
+			outputs = net(inputs)
+			loss = criterion(outputs, labels)
+			loss.backward()
+			optimizer.step()
 
-				_, predicted = torch.max(outputs.data, 1)
-				correct_train += (predicted == labels).sum().item()
+			_, predicted = torch.max(outputs.data, 1)
+			correct_train += (predicted == labels).sum().item()
 
-				# print statistics
-				running_loss += loss.item()
-				# if i % 2000 == 1999:    # print every 2000 mini-batches
-				# 	print('[%d, %5d] loss: %.3f' %
-				# 		(epoch + 1, i + 1, running_loss / 2000))
-				# 	running_loss = 0.0
+			# print statistics
+			running_loss += loss.item()
+			# if i % 2000 == 1999:    # print every 2000 mini-batches
+			# 	print('[%d, %5d] loss: %.3f' %
+			# 		(epoch + 1, i + 1, running_loss / 2000))
+			# 	running_loss = 0.0
 
-		epoch_loss = running_loss/total_train
+		epoch_loss = running_loss/net.num_epochs
+		train_acc = 100*correct_train/total_train
 		net.train_loss_list.append(epoch_loss)
-		net.train_accuracy.append(100*correct_train/total_train)
+		net.train_accuracy.append(train_acc)
 
 		#validation
-		correct_val = 0
-		total_val = 0
-		val_loss = 0
-		with torch.no_grad():
-			for inputs, labels in zip(val_inputs, val_labels):
-				outputs = net(inputs)
-				total_val += labels.size(0)
-				val_loss += criterion(outputs, labels).item()
-				_, predicted = torch.max(outputs.data, 1)
-				correct_val += (predicted == labels).sum().item()
-			net.val_accuracy.append(100*correct_val/total_val)
-			net.val_loss_list.append(val_loss/total_val)
-
-
-		epoch_pbar.set_postfix({'epoch': epoch, 'train loss': running_loss, 'val_accuracy': (100 * correct_val / total_val)})
+		val_los,val_acc = test(net,valloader, print_res=False)
+		net.val_loss_list.append(val_los)
+		net.val_accuracy.append(val_acc)
+		epoch_pbar.set_postfix({'epoch': epoch, 'train loss': epoch_loss, 'train_accuracy': train_acc, 'val loss': val_los, 'val_accuracy': val_acc})
 		# epoch_pbar.set_postfix({'epoch': epoch, 'train accuracy': train_acc, 'train loss': train_loss, \
         #                      'val accuracy': val_acc, 'val loss': val_loss})
 
@@ -201,24 +185,33 @@ def train(net, trainloader, num_epochs=50, validation_ratio=0.2, augment=False):
 
 ###
 
-def test(net, testloader):
+def test(net, testloader, print_res = True):
     correct = 0
     total = 0
+    running_loss = 0
+    counter = 0
+    criterion = nn.CrossEntropyLoss()
     with torch.no_grad():
         for data in testloader:
+            counter += 1
             images, labels = data
             images = images.to(device)
             labels = labels.to(device)
             outputs = net(images)
+            loss = criterion(outputs, labels)
+            running_loss += float(loss)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            
+    los = running_loss / float(counter)		
+    acc = 100 * correct / total
+    if print_res:
+	    print(f'Accuracy of the network on the {total} test images: %d %%' % (acc))
+	
+    return los, acc
 
-    print('Accuracy of the network on the 10000 test images: %d %%' \
-         % (100 * correct / total))
-	# accuracy = 100 * correct / total
-	# loss =
-	# return loss, accuracy
+
 ###
 # New Cell Added:
 
@@ -277,7 +270,7 @@ net = LogisticRegression()
 show_learning_curve(*net.history(), title="Learning Curves - Logistic Regression")
 # summary(net, (num_channels, cropped_size, cropped_size))
 ###
-train(net, trainloader)
+train(net, trainloader, valloader)
 ###
 test(net, testloader)
 ###
@@ -320,7 +313,7 @@ class FullyConnectedNN(nn.Module):
 
 ###
 net = FullyConnectedNN()
-train(net, trainloader, num_epochs=10)
+train(net, trainloader, valloader, num_epochs=10)
 show_learning_curve(*net.history(), title="Learning Curves - Fully Connected NN")
 ###
 test(net, testloader)
@@ -367,7 +360,7 @@ class ConvNN(nn.Module):
 net = ConvNN()
 # summary(net, (num_channels, cropped_size, cropped_size))
 ###
-train(net, trainloader, num_epochs=30)
+train(net, trainloader, valloader, num_epochs=30)
 show_learning_curve(*net.history(), title="Learning Curves - Convolutional NN")
 ###
 test(net, testloader)
@@ -417,7 +410,7 @@ class MobileNetV2FetureExt_FrozenNN(nn.Module):
 net = MobileNetV2FetureExt_FrozenNN()
 # summary(net, (num_channels, cropped_size, cropped_size))
 ###
-train(net, trainloader,3)
+train(net, trainloader, valloader,100)
 show_learning_curve(*net.history(), title="Learning Curves - MobileNetV2 (Frozen Conv Blocks)")
 ###
 test(net, testloader)
@@ -433,10 +426,10 @@ class MobileNetV2FetureExtNN(nn.Module):
 		# Relu and dropout as well. After that comes the classification layer (10 neurons)
 		self.linear_relu_stack = nn.Sequential(
 			nn.ReLU(),
-			nn.Dropout(0.3),
+			# nn.Dropout(0.3),
 			nn.Linear(1000, 1000),
 			nn.ReLU(),
-			nn.Dropout(0.3),
+			# nn.Dropout(0.3),
 			nn.Linear(1000, 10)).to(device)
 
 
@@ -462,7 +455,7 @@ class MobileNetV2FetureExtNN(nn.Module):
 net = MobileNetV2FetureExtNN(pretrained=False).to(device)
 # summary(net, (num_channels, cropped_size, cropped_size))
 ###
-train(net, trainloader, 3)
+train(net, trainloader, valloader, 100)
 show_learning_curve(*net.history(), title="Learning Curves - MobileNetV2 (Whole Model Trainable)")
 ###
 test(net, testloader)
